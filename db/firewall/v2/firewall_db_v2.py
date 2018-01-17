@@ -14,6 +14,7 @@
 #    under the License.
 
 import copy
+import re
 
 import netaddr
 from neutron.db import api as db_api
@@ -196,10 +197,17 @@ class Firewall_db_mixin_v2(fw_ext.Firewallv2PluginBase, base_db.CommonDbMixin):
     def _validate_fwr_src_dst_ip_version(self, fwr, fwr_db=None):
         src_version = dst_version = None
         if fwr.get('source_ip_address', None):
-            src_version = netaddr.IPNetwork(fwr['source_ip_address']).version
+            source_ip_address = fwr['source_ip_address']
+            if source_ip_address.find('-') is not -1:
+                source_ip_address = re.split('-', source_ip_address,
+                                             maxsplit=1)[0]
+            src_version = netaddr.IPNetwork(source_ip_address).version
         if fwr.get('destination_ip_address', None):
-            dst_version = netaddr.IPNetwork(
-                fwr['destination_ip_address']).version
+            destination_ip_address = fwr['destination_ip_address']
+            if destination_ip_address.find('-') is not -1:
+                destination_ip_address = re.split('-', destination_ip_address,
+                                                  maxsplit=1)[0]
+            dst_version = netaddr.IPNetwork(destination_ip_address).version
         rule_ip_version = fwr.get('ip_version', None)
         if not rule_ip_version and fwr_db:
             rule_ip_version = fwr_db.ip_version
