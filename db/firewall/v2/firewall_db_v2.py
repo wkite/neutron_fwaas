@@ -957,7 +957,8 @@ class Firewall_db_mixin_v2(fw_ext.Firewallv2PluginBase, base_db.CommonDbMixin):
         else:
             # An ordinary firewall group is being created BUT let's make sure
             # that a default firewall group for given tenant exists
-            self._ensure_default_firewall_group(context, tenant_id)
+            #self._ensure_default_firewall_group(context, tenant_id)
+            pass
 
         self._validate_tenant_for_fwg_policies(context, fwg, tenant_id)
         with context.session.begin(subtransactions=True):
