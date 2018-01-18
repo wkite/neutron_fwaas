@@ -1091,7 +1091,7 @@ class Firewall_db_mixin_v2(fw_ext.Firewallv2PluginBase, base_db.CommonDbMixin):
         if context.tenant_id:
             tenant_id = filters.get('tenant_id') if filters else None
             tenant_id = tenant_id[0] if tenant_id else context.tenant_id
-            self._ensure_default_firewall_group(context, tenant_id)
+            # self._ensure_default_firewall_group(context, tenant_id)
         return self._get_collection(context, FirewallGroup,
                                     self._make_firewall_group_dict,
                                     filters=filters, fields=fields)
