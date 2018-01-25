@@ -452,5 +452,10 @@ class IptablesFwaasDriver(fwaas_base_v2.FwaasDriverBase):
         if not(ip_prefix):
             return []
 
+        if ip_prefix.find('-') is not -1:
+            direction_dict = {'s':'--src-range', 'd':'--dst-range'}
+            args = ['-m', 'iprange', direction_dict[direction], ip_prefix]
+            return args
+
         args = ['-%s' % direction, '%s' % utils.ip_to_cidr(ip_prefix)]
         return args
