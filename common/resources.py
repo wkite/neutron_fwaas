@@ -15,3 +15,5 @@ from neutron_fwaas.db.firewall.v2 import firewall_db_v2
 FIREWALL_GROUP = firewall_db_v2.FirewallGroup
 FIREWALL_POLICY = firewall_db_v2.FirewallPolicy
 FIREWALL_RULE = firewall_db_v2.FirewallRuleV2
+FIREWALL_SERVICE_GROUP = firewall_db_v2.ServiceGroup
+FIREWALL_ADDRESS_GROUP = firewall_db_v2.AddressGroup

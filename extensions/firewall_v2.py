@@ -130,6 +130,26 @@ class Firewallv2PluginBase(service_base.ServicePluginBase):
         return 'Firewall Service v2 Plugin'
 
     @abc.abstractmethod
+    def create_address_group(self, context, firewall_address_group):
+        pass
+
+    @abc.abstractmethod
+    def delete_address_group(self, context, id):
+        pass
+
+    @abc.abstractmethod
+    def get_address_group(self, context, id):
+        pass
+
+    @abc.abstractmethod
+    def get_address_groups(self, context, filters=None, fields=None):
+        pass
+
+    @abc.abstractmethod
+    def update_address_group(self, context, id, firewall_address_group):
+        pass
+
+    @abc.abstractmethod
     def create_firewall_group(self, context, firewall_group):
         pass
 
