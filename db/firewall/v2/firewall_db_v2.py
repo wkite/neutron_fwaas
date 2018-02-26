@@ -70,6 +70,8 @@ class HasDescription(object):
 class AddressAssociation(model_base.BASEV2, model_base.HasId):
     __tablename__ = "address_associations"
     ip_address = sa.Column(sa.String(46))
+    ip_version = sa.Column(sa.Integer)
+    timeout = sa.Column(sa.Integer)
     address_group_id = sa.Column(sa.String(db_constants.UUID_FIELD_SIZE),
                                  sa.ForeignKey('address_groups.id',
                                                 ondelete="CASCADE"),
@@ -79,7 +81,6 @@ class AddressAssociation(model_base.BASEV2, model_base.HasId):
 class AddressGroup(model_base.BASEV2, model_base.HasId, HasName,
                    HasDescription, model_base.HasProject):
     __tablename__ = "address_groups"
-    ip_version = sa.Column(sa.Integer)
     ip_addresses = orm.relationship(
         AddressAssociation,
         backref=orm.backref('address_groups', single_parent=True,
@@ -209,6 +210,12 @@ class Firewall_db_mixin_v2(fw_ext.Firewallv2PluginBase, base_db.CommonDbMixin):
         except exc.NoResultFound:
             raise f_exc.AddressGroupNotFound(address_group_id=id)
 
+    def _get_address_association(self, context, id):
+        try:
+            return self._get_by_id(context, AddressAssociation, id)
+        except exc.NoResultFound:
+            raise f_exc.AddressGroupNotFound(address_group_id=id)
+
     def _validate_fwr_protocol_parameters(self, fwr, fwr_db=None):
         protocol = fwr.get('protocol', None)
         if fwr_db and not protocol:
@@ -264,17 +271,17 @@ class Firewall_db_mixin_v2(fw_ext.Firewallv2PluginBase, base_db.CommonDbMixin):
         return '%s:%s' % (min_port, max_port)
 
     def _make_address_group_dict(self, address_group, fields=None):
-        fw_addresses = [
-            ip_addresses.ip_address
-            for ip_addresses in address_group['ip_addresses']]
+        fw_addresses = []
+        for address_association in address_group['ip_addresses']:
+            fw_addresses += [{'ip_address': address_association.ip_address,
+                              'ip_version': address_association.ip_version,
+                              'timeout': address_association.timeout}]
         res = {'ip_addresses': fw_addresses,
-               'ip_version': address_group['ip_version'],
                'tenant_id': address_group['tenant_id'],
                'name': address_group['name'],
                'id': address_group['id'],
                'description': address_group['description']}
         return self._fields(res, fields)
-
 
     def _make_firewall_rule_dict(self, firewall_rule, fields=None,
                                  policies=None):
@@ -464,12 +471,21 @@ class Firewall_db_mixin_v2(fw_ext.Firewallv2PluginBase, base_db.CommonDbMixin):
             'eg_ipv6': self.create_firewall_rule(context, eg_fwr_v6)['id'],
         }
 
+    def _create_address_association(self, context, id, address_association):
+        LOG.debug("_create_address_association() called")
+        with context.session.begin(subtransactions=True):
+            for fwaa in address_association:
+                fwaa_db = AddressAssociation(
+                    id=uuidutils.generate_uuid(),
+                    address_group_id=id,
+                    ip_address=fwaa['ip_address'],
+                    ip_version=fwaa['ip_version'],
+                    timeout=fwaa['timeout'])
+                context.session.add(fwaa_db)
+
     def create_address_group(self, context, address_group):
         LOG.debug("create_address_group() called")
         fwag = address_group['address_group']
-        ip_addresses = []
-        for ip_address in fwag['ip_addresses']:
-            ip_addresses += [AddressAssociation(ip_address=ip_address)]
         # self._validate_fwr_protocol_parameters(fwr)
         # self._validate_fwr_src_dst_ip_version(fwr)
         with context.session.begin(subtransactions=True):
@@ -477,30 +493,33 @@ class Firewall_db_mixin_v2(fw_ext.Firewallv2PluginBase, base_db.CommonDbMixin):
                 id=uuidutils.generate_uuid(),
                 tenant_id=fwag['tenant_id'],
                 name=fwag['name'],
-                description=fwag['description'],
-                ip_addresses=ip_addresses,
-                ip_version=fwag['ip_version'])
+                description=fwag['description'])
             context.session.add(fwag_db)
+        self._create_address_association(context, fwag_db.id, fwag['ip_addresses'])
         return self._make_address_group_dict(fwag_db)
+
+    def _update_address_association(self, context, id, address_association):
+        with context.session.begin(subtransactions=True):
+            context.session.query(AddressAssociation).filter(AddressAssociation.address_group_id == id).delete()
+            for fwaa in address_association:
+                fwaa_db = AddressAssociation(
+                    id=uuidutils.generate_uuid(),
+                    address_group_id=id,
+                    ip_version=fwaa['ip_version'],
+                    ip_address=fwaa['ip_address']
+                )
+                context.session.add(fwaa_db)
 
     def update_address_group(self, context, id, address_group):
         LOG.debug("update_address_group() called")
         fwag = address_group['address_group']
-        self.delete_address_group(context, id)
-        ip_addresses = []
-        for ip_address in fwag['ip_addresses']:
-            ip_addresses += [AddressAssociation(ip_address=ip_address)]
+        self._update_address_association(context, id, fwag['ip_addresses'])
+        del fwag['ip_addresses']
         # self._validate_fwr_protocol_parameters(fwr)
         # self._validate_fwr_src_dst_ip_version(fwr)
         with context.session.begin(subtransactions=True):
-            fwag_db = AddressGroup(
-                id=id,
-                tenant_id=context.tenant_id,
-                name=fwag['name'],
-                description=fwag['description'],
-                ip_addresses=ip_addresses,
-                ip_version=fwag['ip_version'])
-            context.session.add(fwag_db)
+            fwag_db = self._get_address_group(context, id)
+            fwag_db.update(fwag)
         return self._make_address_group_dict(fwag_db)
 
     def delete_address_group(self, context, id):

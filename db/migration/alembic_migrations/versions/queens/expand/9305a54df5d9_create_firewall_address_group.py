@@ -34,7 +34,6 @@ def upgrade():
     op.create_table(
         'address_groups',
         sa.Column('id', sa.String(length=36), primary_key=True),
-        sa.Column('ip_version', sa.Integer),
         sa.Column('name', sa.String(length=255)),
         sa.Column('description', sa.String(length=1024)),
         sa.Column('project_id', sa.String(length=255), index=True))
@@ -46,4 +45,6 @@ def upgrade():
         sa.Column('address_group_id', sa.String(length=36),
                   sa.ForeignKey('address_groups.id', ondelete='CASCADE'),
                   nullable=False),
+        sa.Column('ip_version', sa.Integer),
+        sa.Column('timeout', sa.Integer),
         sa.Column('ip_address', sa.String(length=64)))
