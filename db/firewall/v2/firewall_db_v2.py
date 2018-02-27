@@ -71,7 +71,6 @@ class AddressAssociation(model_base.BASEV2, model_base.HasId):
     __tablename__ = "address_associations"
     ip_address = sa.Column(sa.String(46))
     ip_version = sa.Column(sa.Integer)
-    timeout = sa.Column(sa.Integer)
     address_group_id = sa.Column(sa.String(db_constants.UUID_FIELD_SIZE),
                                  sa.ForeignKey('address_groups.id',
                                                 ondelete="CASCADE"),
@@ -274,14 +273,14 @@ class Firewall_db_mixin_v2(fw_ext.Firewallv2PluginBase, base_db.CommonDbMixin):
         fw_addresses = []
         for address_association in address_group['ip_addresses']:
             fw_addresses += [{'ip_address': address_association.ip_address,
-                              'ip_version': address_association.ip_version,
-                              'timeout': address_association.timeout}]
+                              'ip_version': address_association.ip_version}]
         res = {'ip_addresses': fw_addresses,
                'tenant_id': address_group['tenant_id'],
                'name': address_group['name'],
                'id': address_group['id'],
                'description': address_group['description']}
         return self._fields(res, fields)
+
 
     def _make_firewall_rule_dict(self, firewall_rule, fields=None,
                                  policies=None):
@@ -479,8 +478,7 @@ class Firewall_db_mixin_v2(fw_ext.Firewallv2PluginBase, base_db.CommonDbMixin):
                     id=uuidutils.generate_uuid(),
                     address_group_id=id,
                     ip_address=fwaa['ip_address'],
-                    ip_version=fwaa['ip_version'],
-                    timeout=fwaa['timeout'])
+                    ip_version=fwaa['ip_version'])
                 context.session.add(fwaa_db)
 
     def create_address_group(self, context, address_group):
@@ -525,6 +523,8 @@ class Firewall_db_mixin_v2(fw_ext.Firewallv2PluginBase, base_db.CommonDbMixin):
     def delete_address_group(self, context, id):
         LOG.debug("delete_address_group() called")
         with context.session.begin(subtransactions=True):
+            # if self._get_address_group_with_address(context, id):
+            #     raise f_exc.AddressGroupInUse(address_group_id=id)
             context.session.query(AddressGroup).filter(AddressGroup.id == id).delete()
 
     def get_address_group(self, context, id, fields=None):
