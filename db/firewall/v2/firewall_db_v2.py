@@ -87,6 +87,27 @@ class AddressGroup(model_base.BASEV2, model_base.HasId, HasName,
     )
 
 
+class ServiceAssociation(model_base.BASEV2, model_base.HasId):
+    __tablename__ = "service_associations"
+    port = sa.Column(sa.String(255))
+    protocol = sa.Column(sa.String(8))
+    timeout = sa.Column(sa.Integer)
+    service_group_id = sa.Column(sa.String(db_constants.UUID_FIELD_SIZE),
+                                 sa.ForeignKey('service_groups.id',
+                                                ondelete="CASCADE"),
+                                 nullable=False)
+
+
+class ServiceGroup(model_base.BASEV2, model_base.HasId, HasName,
+                   HasDescription, model_base.HasProject):
+    __tablename__ = "service_groups"
+    ports = orm.relationship(
+        ServiceAssociation,
+        backref=orm.backref('service_groups', single_parent=True,
+                            cascade='delete, delete-orphan'),
+    )
+
+
 class FirewallRuleV2(model_base.BASEV2, model_base.HasId, HasName,
                      HasDescription, model_base.HasProject):
     __tablename__ = "firewall_rules_v2"
@@ -209,11 +230,11 @@ class Firewall_db_mixin_v2(fw_ext.Firewallv2PluginBase, base_db.CommonDbMixin):
         except exc.NoResultFound:
             raise f_exc.AddressGroupNotFound(address_group_id=id)
 
-    def _get_address_association(self, context, id):
+    def _get_service_group(self, context, id):
         try:
-            return self._get_by_id(context, AddressAssociation, id)
+            return self._get_by_id(context, ServiceGroup, id)
         except exc.NoResultFound:
-            raise f_exc.AddressGroupNotFound(address_group_id=id)
+            raise f_exc.ServiceGroupNotFound(service_group_id=id)
 
     def _validate_fwr_protocol_parameters(self, fwr, fwr_db=None):
         protocol = fwr.get('protocol', None)
@@ -279,6 +300,20 @@ class Firewall_db_mixin_v2(fw_ext.Firewallv2PluginBase, base_db.CommonDbMixin):
                'name': address_group['name'],
                'id': address_group['id'],
                'description': address_group['description']}
+        return self._fields(res, fields)
+
+
+    def _make_service_group_dict(self, service_group, fields=None):
+        fw_ports = []
+        for service_association in service_group['ports']:
+            fw_ports += [{'port': service_association.port,
+                          'protocol': service_association.protocol,
+                          'timeout': service_association.timeout}]
+        res = {'ports': fw_ports,
+               'tenant_id': service_group['tenant_id'],
+               'name': service_group['name'],
+               'id': service_group['id'],
+               'description': service_group['description']}
         return self._fields(res, fields)
 
 
@@ -536,6 +571,76 @@ class Firewall_db_mixin_v2(fw_ext.Firewallv2PluginBase, base_db.CommonDbMixin):
         LOG.debug("get_address_groups() called")
         return self._get_collection(context, AddressGroup,
                                     self._make_address_group_dict,
+                                    filters=filters, fields=fields)
+
+
+    def _create_service_association(self, context, id, service_association):
+        LOG.debug("_create_service_association() called")
+        with context.session.begin(subtransactions=True):
+            for fwsa in service_association:
+                fwsa_db = ServiceAssociation(
+                    id=uuidutils.generate_uuid(),
+                    service_group_id=id,
+                    port=fwsa['port'],
+                    protocol=fwsa['protocol'],
+                    timeout=fwsa['timeout'])
+                context.session.add(fwsa_db)
+
+    def create_service_group(self, context, service_group):
+        LOG.debug("create_service_group() called")
+        fwsg = service_group['service_group']
+        # # self._validate_fwr_protocol_parameters(fwr)
+        # # self._validate_fwr_src_dst_ip_version(fwr)
+        with context.session.begin(subtransactions=True):
+            fwsg_db = ServiceGroup(
+                id=uuidutils.generate_uuid(),
+                tenant_id=fwsg['tenant_id'],
+                name=fwsg['name'],
+                description=fwsg['description'])
+            context.session.add(fwsg_db)
+        self._create_service_association(context, fwsg_db.id, fwsg['ports'])
+        return self._make_service_group_dict(fwsg_db)
+
+    def _update_service_association(self, context, id, service_association):
+        with context.session.begin(subtransactions=True):
+            context.session.query(ServiceAssociation).filter(ServiceAssociation.service_group_id == id).delete()
+            for fwsa in service_association:
+                fwsa_db = ServiceAssociation(
+                    id=uuidutils.generate_uuid(),
+                    service_group_id = id,
+                    port = fwsa['port'],
+                    protocol = fwsa['protocol'],
+                    timeout = fwsa['timeout'])
+                context.session.add(fwsa_db)
+
+    def update_service_group(self, context, id, service_group):
+        LOG.debug("update_service_group() called")
+        fwsg = service_group['service_group']
+        self._update_service_association(context, id, fwsg['ports'])
+        del fwsg['ports']
+        # self._validate_fwr_protocol_parameters(fwr)
+        # self._validate_fwr_src_dst_ip_version(fwr)
+        with context.session.begin(subtransactions=True):
+            fwsg_db = self._get_service_group(context, id)
+            fwsg_db.update(fwsg)
+        return self._make_service_group_dict(fwsg_db)
+
+    def delete_service_group(self, context, id):
+        LOG.debug("delete_service_group() called")
+        with context.session.begin(subtransactions=True):
+            # if self._get_address_group_with_address(context, id):
+            #     raise f_exc.AddressGroupInUse(address_group_id=id)
+            context.session.query(ServiceGroup).filter(ServiceGroup.id == id).delete()
+
+    def get_service_group(self, context, id, fields=None):
+        LOG.debug("get_service_group() called")
+        fwsg = self._get_service_group(context, id)
+        return self._make_service_group_dict(fwsg, fields)
+
+    def get_service_groups(self, context, filters=None, fields=None):
+        LOG.debug("get_service_groups() called")
+        return self._get_collection(context, ServiceGroup,
+                                    self._make_service_group_dict,
                                     filters=filters, fields=fields)
 
     def create_firewall_rule(self, context, firewall_rule):
