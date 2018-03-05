@@ -35,8 +35,9 @@ def upgrade():
         sa.Column('id', sa.String(length=36), primary_key=True),
         sa.Column('name', sa.String(length=255)),
         sa.Column('description', sa.String(length=1024)),
-        sa.Column('project_id', sa.String(length=255), index=True))
-
+        sa.Column('project_id', sa.String(length=255), index=True),
+        mysql_DEFAULT_CHARSET='utf8'
+    )
     op.create_table(
         'service_associations',
         sa.Column('id', sa.String(length=36), primary_key=True),
@@ -45,4 +46,6 @@ def upgrade():
                   nullable=False),
         sa.Column('port', sa.String(length=255)),
         sa.Column('timeout', sa.Integer),
-        sa.Column('protocol', sa.String(length=8)))
+        sa.Column('protocol', sa.String(length=8)),
+        mysql_DEFAULT_CHARSET='utf8'
+    )

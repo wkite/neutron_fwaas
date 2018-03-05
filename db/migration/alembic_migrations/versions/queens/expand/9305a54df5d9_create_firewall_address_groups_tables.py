@@ -36,7 +36,9 @@ def upgrade():
         sa.Column('id', sa.String(length=36), primary_key=True),
         sa.Column('name', sa.String(length=255)),
         sa.Column('description', sa.String(length=1024)),
-        sa.Column('project_id', sa.String(length=255), index=True))
+        sa.Column('project_id', sa.String(length=255), index=True),
+        mysql_DEFAULT_CHARSET='utf8'
+    )
 
 
     op.create_table(
@@ -46,4 +48,6 @@ def upgrade():
                   sa.ForeignKey('address_groups.id', ondelete='CASCADE'),
                   nullable=False),
         sa.Column('ip_version', sa.Integer),
-        sa.Column('ip_address', sa.String(length=64)))
+        sa.Column('ip_address', sa.String(length=64)),
+        mysql_DEFAULT_CHARSET='utf8'
+    )
