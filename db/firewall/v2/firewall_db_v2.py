@@ -107,6 +107,29 @@ class ServiceGroup(model_base.BASEV2, model_base.HasId, HasName,
                             cascade='delete, delete-orphan'),
     )
 
+class RuleV2SourceAddressGroupAssociation(model_base.BASEV2, model_base.HasId):
+    __tablename__ = "firewall_rule_source_address_group_associations_v2"
+    address_group_id = sa.Column(sa.String(db_constants.UUID_FIELD_SIZE),
+                                 sa.ForeignKey('address_groups.id',
+                                                ondelete="CASCADE"),
+                                 nullable=False)
+    firewall_rule_id = sa.Column(sa.String(db_constants.UUID_FIELD_SIZE),
+                                 sa.ForeignKey('firewall_rules_v2.id',
+                                               ondelete="CASCADE"),
+                                 nullable=False)
+
+
+class RuleV2DestinationAddressGroupAssociation(model_base.BASEV2, model_base.HasId):
+    __tablename__ = "firewall_rule_destination_address_group_associations_v2"
+    address_group_id = sa.Column(sa.String(db_constants.UUID_FIELD_SIZE),
+                                 sa.ForeignKey('address_groups.id',
+                                                ondelete="CASCADE"),
+                                 nullable=False)
+    firewall_rule_id = sa.Column(sa.String(db_constants.UUID_FIELD_SIZE),
+                                 sa.ForeignKey('firewall_rules_v2.id',
+                                               ondelete="CASCADE"),
+                                 nullable=False)
+
 
 class FirewallRuleV2(model_base.BASEV2, model_base.HasId, HasName,
                      HasDescription, model_base.HasProject):
@@ -123,6 +146,16 @@ class FirewallRuleV2(model_base.BASEV2, model_base.HasId, HasName,
     action = sa.Column(sa.Enum('allow', 'deny', 'reject',
                                name='firewallrules_action'))
     enabled = sa.Column(sa.Boolean)
+    source_address_groups = orm.relationship(
+        RuleV2SourceAddressGroupAssociation,
+        foreign_keys='RuleV2SourceAddressGroupAssociation.firewall_rule_id',
+        backref=orm.backref('firewall_rules_v2', cascade='all, delete')
+    )
+    destination_address_groups = orm.relationship(
+        RuleV2DestinationAddressGroupAssociation,
+        foreign_keys='RuleV2DestinationAddressGroupAssociation.firewall_rule_id',
+        backref=orm.backref('firewall_rules_v2', cascade='all, delete')
+    )
 
 
 class FirewallGroup(model_base.BASEV2, model_base.HasId, HasName,
@@ -325,6 +358,12 @@ class Firewall_db_mixin_v2(fw_ext.Firewallv2PluginBase, base_db.CommonDbMixin):
         dst_port_range = self._get_port_range_from_min_max_ports(
             firewall_rule['destination_port_range_min'],
             firewall_rule['destination_port_range_max'])
+        fw_sags = [
+            source_address_group.address_group_id
+            for source_address_group in firewall_rule['source_address_groups']]
+        fw_dags = [
+            destination_address_group.address_group_id
+            for destination_address_group in firewall_rule['destination_address_groups']]
         res = {'id': firewall_rule['id'],
                'tenant_id': firewall_rule['tenant_id'],
                'name': firewall_rule['name'],
@@ -337,6 +376,8 @@ class Firewall_db_mixin_v2(fw_ext.Firewallv2PluginBase, base_db.CommonDbMixin):
                firewall_rule['destination_ip_address'],
                'source_port': src_port_range,
                'destination_port': dst_port_range,
+               'source_address_group_ids': fw_sags,
+               'destination_address_group_ids': fw_dags,
                'action': firewall_rule['action'],
                'enabled': firewall_rule['enabled'],
                'shared': firewall_rule['shared']}
@@ -378,7 +419,18 @@ class Firewall_db_mixin_v2(fw_ext.Firewallv2PluginBase, base_db.CommonDbMixin):
                  .join(FirewallPolicyRuleAssociation)
                  .filter_by(firewall_policy_id=policy_id)
                  .order_by(FirewallPolicyRuleAssociation.position))
-        return [self._make_firewall_rule_dict(rule) for rule in query]
+        rules = []
+        for rule in query:
+            rule_dict = self._make_firewall_rule_dict(rule)
+            rule_dict['source_address_groups'] = []
+            rule_dict['destination_address_groups'] = []
+            fields = ['id', 'name', 'ip_addresses']
+            for id in rule_dict['source_address_group_ids']:
+                rule_dict['source_address_groups'] += [self.get_address_group(context, id, fields)]
+            for id in rule_dict['destination_address_group_ids']:
+                rule_dict['destination_address_groups'] += [self.get_address_group(context, id, fields)]
+            rules += [rule_dict]
+        return rules
 
     def _make_firewall_group_dict_with_rules(self, context, firewall_group_id):
         firewall_group = self.get_firewall_group(context, firewall_group_id)
@@ -643,6 +695,37 @@ class Firewall_db_mixin_v2(fw_ext.Firewallv2PluginBase, base_db.CommonDbMixin):
                                     self._make_service_group_dict,
                                     filters=filters, fields=fields)
 
+    def _set_address_groups_for_rule(self, context, id, firewall_rule):
+        fwr = firewall_rule['firewall_rule']
+        with context.session.begin(subtransactions=True):
+            for source_address_group_id in fwr['source_address_group_ids']:
+                fw_sag_db = RuleV2SourceAddressGroupAssociation(
+                    id=uuidutils.generate_uuid(),
+                    address_group_id=source_address_group_id,
+                    firewall_rule_id=id
+                )
+                context.session.add(fw_sag_db)
+            for destination_address_group_id in fwr['destination_address_group_ids']:
+                fw_dag_db = RuleV2DestinationAddressGroupAssociation(
+                    id=uuidutils.generate_uuid(),
+                    address_group_id=destination_address_group_id,
+                    firewall_rule_id=id
+                )
+                context.session.add(fw_dag_db)
+
+    def _update_address_groups_for_rule(self, context, id, firewall_rule):
+        self._delete_all_address_groups_from_rule(context, id)
+        self._set_address_groups_for_rule(context, id, firewall_rule)
+
+    def _delete_all_address_groups_from_rule(self, context, id):
+        with context.session.begin(subtransactions=True):
+            context.session.query(
+                RuleV2SourceAddressGroupAssociation).filter_by(
+                firewall_rule_id=id).delete()
+            context.session.query(
+                RuleV2DestinationAddressGroupAssociation).filter_by(
+                firewall_rule_id=id).delete()
+
     def create_firewall_rule(self, context, firewall_rule):
         LOG.debug("create_firewall_rule() called")
         fwr = firewall_rule['firewall_rule']
@@ -673,6 +756,7 @@ class Firewall_db_mixin_v2(fw_ext.Firewallv2PluginBase, base_db.CommonDbMixin):
                 enabled=fwr['enabled'],
                 shared=fwr['shared'])
             context.session.add(fwr_db)
+            self._set_address_groups_for_rule(context, fwr_db.id, firewall_rule)
         return self._make_firewall_rule_dict(fwr_db)
 
     def update_firewall_rule(self, context, id, firewall_rule):
@@ -708,6 +792,7 @@ class Firewall_db_mixin_v2(fw_ext.Firewallv2PluginBase, base_db.CommonDbMixin):
             for fwp_id in fwp_ids:
                 fwp_db = self._get_firewall_policy(context, fwp_id)
                 fwp_db['audited'] = False
+            self._update_address_groups_for_rule(context, id, firewall_rule)
         return self._make_firewall_rule_dict(fwr_db)
 
     def delete_firewall_rule(self, context, id):
@@ -717,6 +802,7 @@ class Firewall_db_mixin_v2(fw_ext.Firewallv2PluginBase, base_db.CommonDbMixin):
             # make sure rule is not associated with any policy
             if self._get_policies_with_rule(context, id):
                 raise f_exc.FirewallRuleInUse(firewall_rule_id=id)
+            self._delete_all_address_groups_from_rule(context, id)
             context.session.delete(fwr)
 
     def insert_rule(self, context, id, rule_info):
