@@ -534,6 +534,7 @@ class Firewall_db_mixin_v2(fw_ext.Firewallv2PluginBase, base_db.CommonDbMixin):
     def _update_address_association(self, context, id, address_association):
         with context.session.begin(subtransactions=True):
             context.session.query(AddressAssociation).filter(AddressAssociation.address_group_id == id).delete()
+            context.session.query(AddressAssociation).filter_by(address_group_id=id).delete()
             for fwaa in address_association:
                 fwaa_db = AddressAssociation(
                     id=uuidutils.generate_uuid(),
@@ -561,6 +562,7 @@ class Firewall_db_mixin_v2(fw_ext.Firewallv2PluginBase, base_db.CommonDbMixin):
             # if self._get_address_group_with_address(context, id):
             #     raise f_exc.AddressGroupInUse(address_group_id=id)
             context.session.query(AddressGroup).filter(AddressGroup.id == id).delete()
+            context.session.query(AddressGroup).filter_by(id=id).delete()
 
     def get_address_group(self, context, id, fields=None):
         LOG.debug("get_address_group() called")
@@ -604,6 +606,7 @@ class Firewall_db_mixin_v2(fw_ext.Firewallv2PluginBase, base_db.CommonDbMixin):
     def _update_service_association(self, context, id, service_association):
         with context.session.begin(subtransactions=True):
             context.session.query(ServiceAssociation).filter(ServiceAssociation.service_group_id == id).delete()
+            context.session.query(ServiceAssociation).filter_by(service_group_id=id).delete()
             for fwsa in service_association:
                 fwsa_db = ServiceAssociation(
                     id=uuidutils.generate_uuid(),
@@ -631,6 +634,7 @@ class Firewall_db_mixin_v2(fw_ext.Firewallv2PluginBase, base_db.CommonDbMixin):
             # if self._get_address_group_with_address(context, id):
             #     raise f_exc.AddressGroupInUse(address_group_id=id)
             context.session.query(ServiceGroup).filter(ServiceGroup.id == id).delete()
+            context.session.query(ServiceGroup).filter_by(id=id).delete()
 
     def get_service_group(self, context, id, fields=None):
         LOG.debug("get_service_group() called")
