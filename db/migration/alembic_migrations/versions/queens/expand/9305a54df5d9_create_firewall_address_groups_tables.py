@@ -51,3 +51,29 @@ def upgrade():
         sa.Column('ip_address', sa.String(length=64)),
         mysql_DEFAULT_CHARSET='utf8'
     )
+
+
+    op.create_table(
+        'firewall_rule_source_address_group_associations_v2',
+        sa.Column('id', sa.String(length=36), primary_key=True),
+        sa.Column('firewall_rule_id', sa.String(length=36),
+                  sa.ForeignKey('firewall_rules_v2.id', ondelete='CASCADE'),
+                  nullable=True),
+        sa.Column('address_group_id', sa.String(length=36),
+                  sa.ForeignKey('address_groups.id', ondelete='CASCADE'),
+                  nullable=False),
+        mysql_DEFAULT_CHARSET='utf8'
+    )
+
+
+    op.create_table(
+        'firewall_rule_destination_address_group_associations_v2',
+        sa.Column('id', sa.String(length=36), primary_key=True),
+        sa.Column('firewall_rule_id', sa.String(length=36),
+                  sa.ForeignKey('firewall_rules_v2.id', ondelete='CASCADE'),
+                  nullable=True),
+        sa.Column('address_group_id', sa.String(length=36),
+                  sa.ForeignKey('address_groups.id', ondelete='CASCADE'),
+                  nullable=False),
+        mysql_DEFAULT_CHARSET='utf8'
+    )
