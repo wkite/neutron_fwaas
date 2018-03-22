@@ -18,9 +18,14 @@ from debtcollector import moves
 from neutron.api.v2 import resource_helper
 from neutron_lib.api.definitions import constants as api_const
 from neutron_lib.api.definitions import firewall_v2
+from neutron_lib.api.validators import validate_ip_or_subnet_or_ip_pools_or_none
 from neutron_lib.api import extensions
+from neutron_lib.api import validators
 from neutron_lib.exceptions import firewall_v2 as f_exc
 from neutron_lib.services import base as service_base
+from netaddr import IPAddress
+from re import split
+import webob.exc
 import six
 
 from neutron_fwaas.common import fwaas_constants
@@ -97,6 +102,22 @@ firewall_v2.RESOURCE_ATTRIBUTE_MAP[api_const.FIREWALL_RULES][
     'source_port']['convert_to'] = convert_to_string
 firewall_v2.RESOURCE_ATTRIBUTE_MAP[api_const.FIREWALL_RULES][
     'destination_port']['convert_to'] = convert_to_string
+
+
+def _convert_and_validate_addresses(addresses, valid_values=None):
+    for address in addresses:
+        ip_address = address.get('ip_address')
+        msg = validate_ip_or_subnet_or_ip_pools_or_none(ip_address)
+        if msg is not None:
+            raise webob.exc.HTTPBadRequest(msg)
+        if '-' in ip_address:
+            ip_address = split('-', ip_address, maxsplit=1)[0]
+        ip = IPAddress(ip_address)
+        if ip.version != address.get('ip_version'):
+            raise webob.exc.HTTPBadRequest('Bad IP version')
+
+
+validators.add_validator('convert_ip_addresses', _convert_and_validate_addresses)
 
 
 class Firewall_v2(extensions.APIExtensionDescriptor):
